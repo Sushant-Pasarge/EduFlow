@@ -1,0 +1,293 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Fields: uid, email, name, role, university, usn, semester, createdAt
+    //
+    // Collection: courses
+    // Fields: id, courseName, description, teacherId, teacherName, studentsCount, createdAt
+    //
+    // Collection: assignments
+    // Fields: id, title, description, deadline, courseId, teacherId, fileUrl, fileName, createdAt
+    //
+    // Collection: materials
+    // Fields: id, title, description, courseId, teacherId, fileUrl, fileName, fileType, createdAt
+    //
+    // Collection: submissions
+    // Fields: id, assignmentId, studentId, studentName, fileUrl, fileName, submittedAt
+    //
+    // Collection: enrollments
+    // Fields: id, courseId, studentId, enrolledAt
+    //
+    // Collection: timetable
+    // Fields: id, day, startTime, endTime, subject, room, teacherName, userId, courseId, fileUrl, fileName, createdAt
+    //
+    // Collection: notifications
+    // Fields: id, title, message, type, userId, courseId, fileUrl, fileName, timestamp
+    //
+    // Collection: attendance
+    // Fields: id, courseId, studentId, studentName, date, status, semester, recordedAt
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isDocOwner() {
+      return isAuthenticated() && request.auth.uid == resource.data.uid;
+    }
+
+    function isAdmin() {
+      let userPath = /databases/$(database)/documents/users/$(request.auth.uid);
+      return isAuthenticated() && 
+        (request.auth.token.email == "pasargesushant@gmail.com" && request.auth.token.email_verified == true ||
+         (exists(userPath) && get(userPath).data.role == 'admin'));
+    }
+
+    function isTeacher() {
+      let userPath = /databases/$(database)/documents/users/$(request.auth.uid);
+      return isAuthenticated() && 
+        exists(userPath) && 
+        get(userPath).data.role == 'teacher';
+    }
+
+    function isStudent() {
+      let userPath = /databases/$(database)/documents/users/$(request.auth.uid);
+      return isAuthenticated() && 
+        exists(userPath) && 
+        get(userPath).data.role == 'student';
+    }
+
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    function isValidUrl(url) {
+      return url is string && (url.matches("^https://.*") || url.matches("^http://.*"));
+    }
+
+    function uidUnchanged() {
+      return !('uid' in request.resource.data) || request.resource.data.uid == request.auth.uid;
+    }
+
+    function uidNotModified() {
+      return !('uid' in request.resource.data) || request.resource.data.uid == resource.data.uid;
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+
+    function isValidUser(data) {
+      return hasOnlyAllowedFields(['uid', 'email', 'name', 'role', 'university', 'usn', 'semester', 'createdAt']) &&
+             data.uid is string && data.uid.size() > 0 && data.uid.size() < 128 &&
+             data.email is string && isValidEmail(data.email) && data.email.size() < 128 &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+             data.role in ['student', 'teacher', 'admin'] &&
+             (data.university == null || (data.university is string && data.university.size() < 128)) &&
+             (data.usn == null || (data.usn is string && data.usn.size() < 32)) &&
+             (data.semester == null || (data.semester is string && data.semester.size() < 16)) &&
+             data.createdAt is string;
+    }
+
+    function isValidCourse(data) {
+      let userPath = /databases/$(database)/documents/users/$(request.auth.uid);
+      return hasOnlyAllowedFields(['id', 'courseName', 'description', 'teacherId', 'teacherName', 'university', 'studentsCount', 'createdAt']) &&
+             data.id is string && data.id.size() > 0 && data.id.size() < 64 &&
+             data.courseName is string && data.courseName.size() > 0 && data.courseName.size() < 100 &&
+             (data.description == null || (data.description is string && data.description.size() < 1000)) &&
+             data.teacherId is string && data.teacherId.size() > 0 && data.teacherId.size() < 128 &&
+             (data.teacherName == null || (data.teacherName is string && data.teacherName.size() < 100)) &&
+             (data.university == null || (data.university is string && data.university.size() < 128)) &&
+             data.studentsCount is number && data.studentsCount >= 0 &&
+             data.createdAt is string &&
+             (isAdmin() || (exists(userPath) && isSameUniversity(data)));
+    }
+
+    function isValidCourseEnrollmentUpdate() {
+      let oldData = resource.data;
+      let newData = request.resource.data;
+      let affectedKeys = newData.diff(oldData).affectedKeys();
+      
+      let oldCount = 'studentsCount' in oldData ? oldData.studentsCount : 0;
+      let newCount = 'studentsCount' in newData ? newData.studentsCount : 0;
+      
+      return affectedKeys.hasOnly(['studentsCount']) &&
+             (newCount == oldCount + 1 || newCount == oldCount - 1);
+    }
+
+    function isValidEnrollment(data, enrollmentId) {
+      return hasOnlyAllowedFields(['id', 'courseId', 'studentId', 'enrolledAt']) &&
+             data.id is string && data.id == enrollmentId &&
+             data.courseId is string && data.courseId.size() < 64 &&
+             data.studentId is string && data.studentId.size() < 128 &&
+             data.id == data.studentId + '_' + data.courseId &&
+             data.enrolledAt is string;
+    }
+
+    function isValidAssignment(data) {
+      let coursePath = /databases/$(database)/documents/courses/$(data.courseId);
+      return hasOnlyAllowedFields(['id', 'title', 'description', 'deadline', 'courseId', 'teacherId', 'university', 'fileUrl', 'fileName', 'createdAt']) &&
+             data.id is string && data.id.size() < 64 &&
+             data.title is string && data.title.size() > 0 && data.title.size() < 200 &&
+             (data.description == null || (data.description is string && data.description.size() < 2000)) &&
+             data.deadline is string && data.courseId is string && data.teacherId is string &&
+             (data.university == null || (data.university is string && data.university.size() < 128)) &&
+             (data.fileUrl == null || (data.fileUrl is string && isValidUrl(data.fileUrl))) &&
+             (data.fileName == null || (data.fileName is string && data.fileName.size() < 256)) &&
+             data.createdAt is string &&
+             (isAdmin() || (isTeacher() && data.teacherId == request.auth.uid && exists(coursePath) && get(coursePath).data.teacherId == request.auth.uid && isSameUniversity(data)));
+    }
+
+    function isValidMaterial(data) {
+      let coursePath = /databases/$(database)/documents/courses/$(data.courseId);
+      return hasOnlyAllowedFields(['id', 'title', 'description', 'courseId', 'teacherId', 'university', 'fileUrl', 'fileName', 'fileType', 'createdAt']) &&
+             data.id is string && data.id.size() < 64 &&
+             data.title is string && data.title.size() > 0 && data.title.size() < 200 &&
+             (data.description == null || (data.description is string && data.description.size() < 2000)) &&
+             data.courseId is string && data.teacherId is string &&
+             (data.university == null || (data.university is string && data.university.size() < 128)) &&
+             (data.fileUrl == null || (data.fileUrl is string && isValidUrl(data.fileUrl))) &&
+             (data.fileName == null || (data.fileName is string && data.fileName.size() < 256)) &&
+             (data.fileType == null || (data.fileType is string && data.fileType.size() < 128)) &&
+             data.createdAt is string &&
+             (isAdmin() || (isTeacher() && data.teacherId == request.auth.uid && exists(coursePath) && get(coursePath).data.teacherId == request.auth.uid && isSameUniversity(data)));
+    }
+
+    function isValidSubmission(data, submissionId) {
+      let assignmentPath = /databases/$(database)/documents/assignments/$(data.assignmentId);
+      return hasOnlyAllowedFields(['id', 'assignmentId', 'studentId', 'studentName', 'fileUrl', 'fileName', 'submittedAt']) &&
+             data.id is string && data.id == submissionId &&
+             data.assignmentId is string && data.studentId is string &&
+             data.studentName is string && data.studentName.size() < 100 &&
+             data.submittedAt is string &&
+             data.studentId == request.auth.uid &&
+             (data.fileUrl == null || (data.fileUrl is string && isValidUrl(data.fileUrl))) &&
+             (data.fileName == null || (data.fileName is string && data.fileName.size() < 256)) &&
+             exists(assignmentPath) &&
+             exists(/databases/$(database)/documents/enrollments/$(data.studentId + '_' + get(assignmentPath).data.courseId));
+    }
+
+    function isValidTimetable(data) {
+      return data.id is string && data.courseId is string && data.teacherId is string &&
+             (isAdmin() || isSameUniversity(data));
+    }
+
+    function isValidNotification(data) {
+      return data.id is string && data.teacherId is string &&
+             (isAdmin() || isSameUniversity(data));
+    }
+
+    function isValidAttendance(data) {
+      return data.id is string && data.courseId is string && data.studentId is string &&
+             (isAdmin() || isSameUniversity(data));
+    }
+
+    function isSameUniversity(data) {
+      let userPath = /databases/$(database)/documents/users/$(request.auth.uid);
+      return !exists(userPath) ? data.university == null : 
+             (data.university == null || 
+              get(userPath).data.university == null || 
+              data.university == get(userPath).data.university);
+    }
+
+    // ===============================================================
+    // Collection Rules
+    // ===============================================================
+
+    match /test/{docId} {
+      allow read: if true;
+    }
+
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidUser(request.resource.data) && 
+                      (isOwner(userId) || isAdmin());
+      allow update: if isAuthenticated() && isValidUser(request.resource.data) && 
+                      (isOwner(userId) || isAdmin()) && 
+                      (request.resource.data.role == resource.data.role || isAdmin());
+      allow delete: if isAdmin();
+    }
+
+    match /courses/{courseId} {
+      allow read: if true;
+      allow create: if (isAdmin() || isTeacher()) && isValidCourse(request.resource.data);
+      allow update: if isAdmin() || (isTeacher() && resource.data.teacherId == request.auth.uid) || (isStudent() && isValidCourseEnrollmentUpdate());
+      allow delete: if isAdmin() || (isTeacher() && resource.data.teacherId == request.auth.uid);
+    }
+
+    match /assignments/{assignmentId} {
+      allow read: if true;
+      allow create: if (isAdmin() || isTeacher()) && isValidAssignment(request.resource.data);
+      allow update: if isAdmin() || (isTeacher() && resource.data.teacherId == request.auth.uid);
+      allow delete: if isAdmin() || (isTeacher() && resource.data.teacherId == request.auth.uid);
+    }
+
+    match /materials/{materialId} {
+      allow read: if true;
+      allow create: if (isAdmin() || isTeacher()) && isValidMaterial(request.resource.data);
+      allow update: if isAdmin() || (isTeacher() && resource.data.teacherId == request.auth.uid);
+      allow delete: if isAdmin() || (isTeacher() && resource.data.teacherId == request.auth.uid);
+    }
+
+    match /submissions/{submissionId} {
+      allow read: if true;
+      allow create: if isAuthenticated() && isValidSubmission(request.resource.data, submissionId);
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    match /enrollments/{enrollmentId} {
+      allow read: if true;
+      allow create: if (isStudent() || isAdmin()) && isValidEnrollment(request.resource.data, enrollmentId) && (isAdmin() || request.resource.data.studentId == request.auth.uid);
+      allow update: if (isStudent() || isAdmin()) && isValidEnrollment(request.resource.data, enrollmentId) && (isAdmin() || request.resource.data.studentId == request.auth.uid);
+      allow delete: if isAdmin() || (isAuthenticated() && resource.data.studentId == request.auth.uid);
+    }
+
+    match /timetable/{timetableId} {
+      allow read: if true;
+      allow create: if (isAdmin() || isTeacher()) && isValidTimetable(request.resource.data);
+      allow update: if (isAdmin() || isTeacher()) && isValidTimetable(request.resource.data);
+      allow delete: if isAdmin() || isTeacher();
+    }
+
+    match /notifications/{notificationId} {
+      allow read: if true;
+      allow create: if (isAdmin() || isTeacher()) && isValidNotification(request.resource.data);
+      allow delete: if isAdmin() || (isTeacher() && resource.data.userId == request.auth.uid);
+    }
+
+    match /attendance/{attendanceId} {
+      allow read: if true;
+      allow create: if (isAdmin() || isTeacher()) && isValidAttendance(request.resource.data);
+      allow update: if (isAdmin() || isTeacher()) && isValidAttendance(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /teacherStats/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow write: if isOwner(userId) || isAdmin();
+    }
+  }
+}

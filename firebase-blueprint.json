@@ -1,0 +1,172 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile information",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Unique user ID" },
+        "email": { "type": "string", "format": "email", "description": "User email address" },
+        "name": { "type": "string", "description": "Full name of the user" },
+        "role": { "type": "string", "enum": ["student", "teacher", "admin"], "description": "User role" },
+        "university": { "type": "string", "description": "University name" },
+        "usn": { "type": "string", "description": "University Serial Number" },
+        "semester": { "type": "string", "description": "Current semester" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Account creation timestamp" }
+      },
+      "required": ["uid", "email", "name", "role"]
+    },
+    "Course": {
+      "title": "Course",
+      "description": "Course details",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "courseName": { "type": "string" },
+        "description": { "type": "string" },
+        "teacherId": { "type": "string" },
+        "teacherName": { "type": "string" },
+        "studentsCount": { "type": "integer" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "courseName", "teacherId"]
+    },
+    "Assignment": {
+      "title": "Assignment",
+      "description": "Course assignment",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "deadline": { "type": "string", "format": "date-time" },
+        "courseId": { "type": "string" },
+        "teacherId": { "type": "string" },
+        "fileUrl": { "type": "string" },
+        "fileName": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "title", "courseId", "teacherId"]
+    },
+    "Material": {
+      "title": "Material",
+      "description": "Course study material",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "courseId": { "type": "string" },
+        "teacherId": { "type": "string" },
+        "fileUrl": { "type": "string" },
+        "fileName": { "type": "string" },
+        "fileType": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "title", "courseId", "teacherId"]
+    },
+    "Submission": {
+      "title": "Submission",
+      "description": "Assignment submission",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "assignmentId": { "type": "string" },
+        "studentId": { "type": "string" },
+        "studentName": { "type": "string" },
+        "fileUrl": { "type": "string" },
+        "fileName": { "type": "string" },
+        "submittedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "assignmentId", "studentId"]
+    },
+    "Enrollment": {
+      "title": "Enrollment",
+      "description": "Student enrollment in a course",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "courseId": { "type": "string" },
+        "studentId": { "type": "string" },
+        "enrolledAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "courseId", "studentId"]
+    },
+    "Timetable": {
+      "title": "Timetable",
+      "description": "Class schedule",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "day": { "type": "string" },
+        "startTime": { "type": "string" },
+        "endTime": { "type": "string" },
+        "subject": { "type": "string" },
+        "room": { "type": "string" },
+        "teacherName": { "type": "string" },
+        "userId": { "type": "string" },
+        "courseId": { "type": "string" },
+        "fileUrl": { "type": "string" },
+        "fileName": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "day", "startTime", "endTime"]
+    },
+    "Notification": {
+      "title": "Notification",
+      "description": "System or course notification",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "message": { "type": "string" },
+        "type": { "type": "string" },
+        "userId": { "type": "string" },
+        "courseId": { "type": "string" },
+        "fileUrl": { "type": "string" },
+        "fileName": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "title", "message"]
+    },
+    "Attendance": {
+      "title": "Attendance",
+      "description": "Student attendance record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "courseId": { "type": "string" },
+        "studentId": { "type": "string" },
+        "studentName": { "type": "string" },
+        "date": { "type": "string" },
+        "status": { "type": "string", "enum": ["present", "absent", "late"] },
+        "semester": { "type": "string" },
+        "recordedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "courseId", "studentId", "date", "status"]
+    },
+    "TeacherStats": {
+      "title": "TeacherStats",
+      "description": "Teacher dashboard statistics",
+      "type": "object",
+      "properties": {
+        "totalStudents": { "type": "integer" },
+        "activeCourses": { "type": "integer" },
+        "pendingAssignments": { "type": "integer" },
+        "averageAttendance": { "type": "number" }
+      }
+    }
+  },
+  "firestore": {
+    "/users/{uid}": { "schema": "User", "description": "User profiles" },
+    "/courses/{courseId}": { "schema": "Course", "description": "Courses list" },
+    "/assignments/{assignmentId}": { "schema": "Assignment", "description": "Assignments list" },
+    "/materials/{materialId}": { "schema": "Material", "description": "Course materials" },
+    "/submissions/{submissionId}": { "schema": "Submission", "description": "Assignment submissions" },
+    "/enrollments/{enrollmentId}": { "schema": "Enrollment", "description": "Course enrollments" },
+    "/timetable/{timetableId}": { "schema": "Timetable", "description": "Timetable entries" },
+    "/notifications/{notificationId}": { "schema": "Notification", "description": "System notifications" },
+    "/attendance/{attendanceId}": { "schema": "Attendance", "description": "Attendance records" },
+    "/teacherStats/{teacherId}": { "schema": "TeacherStats", "description": "Teacher dashboard statistics" }
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "name": "EduFlow LMS",
+  "description": "A comprehensive Learning Management System with Teacher and Student roles, featuring assignment management, study materials, and real-time notifications.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone",
+    "geolocation"
+  ]
+}
